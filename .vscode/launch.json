@@ -1,0 +1,59 @@
+{
+  // Use IntelliSense to learn about possible attributes.
+  // Hover to view descriptions of existing attributes.
+  // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+  "version": "0.2.0",
+  "configurations": [
+      {
+        "name": "cpp",
+        "type": "cppdbg",
+        "request": "launch",
+        "program": "${workspaceFolder}/build/bin/tpuc-opt",
+        // TOP
+        "args": ["yolov5s_origin.mlir", "--shape-infer", "-o", "yolov5s_origin_shape-infer.mlir"],
+        //"args": ["yolov5s.mlir", "--processor-assign='chip=bm1684x mode=F16 num_device=1 num_core=1 addr_mode=auto high_precision=False'"],
+        // TOP MLIR => TPU MLIR
+        //"args": ["yolov5s.mlir", "--processor-assign='chip=bm1684x mode=F16 num_device=1 num_core=1 addr_mode=auto high_precision=False'", "--processor-top-optimize", "--convert-top-to-tpu=' asymmetric=False doWinograd=False q_group_size=0 q_symmetric=False matmul_perchannel=False gelu_mode=normal'", "--canonicalize", "--weight-fold", "-o", "yolov5s_bm1684x_f16_tpu.mlir"],
+        //"args": ["yolov5s_bm1684x_f16_final.mlir", "--codegen='model_file=yolov5s_1684x_f16.bmodel embed_debug_info=False model_version=latest bmodel_only=False gdma_check=True'", "-o", "/dev/null"],
+        "stopAtEntry": false,
+        "cwd": "${workspaceFolder}/demo/workspace_yolov5s_f16",
+        "environment": [],
+        "externalConsole": false,
+        "MIMode": "gdb",
+        "setupCommands": [
+            {
+                "description": "Enable pretty-printing for gdb",
+                "text": "-enable-pretty-printing",
+                "ignoreFailures": true
+            }
+        ],
+        "miDebuggerPath": "/usr/bin/gdb"
+    },
+    {
+        "name": "cpp-attach",
+        "type": "cppdbg",
+        "request": "attach",
+        "program": "${workspaceFolder}/build/bin/tpuc-opt",
+        "processId": "155713",
+        "MIMode": "gdb",
+        "setupCommands": [
+            {
+                "description": "Enable pretty-printing for gdb",
+                "text": "-enable-pretty-printing",
+                "ignoreFailures": true
+            }
+        ],
+        "miDebuggerPath": "/usr/bin/gdb"
+    },
+    {
+      "name": "Python Debugger: Attach",
+      "type": "python",
+      "request": "attach",
+      "connect": {
+      "host": "localhost",
+      "port": 5678
+      }
+    }
+
+  ]
+}
