@@ -11,14 +11,15 @@
 #include "tpu_mlir/Support/CastUtils.h"
 
 namespace tpu_mlir {
-
+//通过查找表，可以将复杂的激活函数计算转换为简单的查表操作，从而显著提高计算效率。以下是对该函数的详细解析。
 Value create_lookup_table(Value in, Value out, bool asymmetric,
                           activate_f &&func, int bit_width,
                           RoundingMode round_mode, bool output_asym) {
   double in_scale, out_scale;
   int64_t in_zp, out_zp;
   bool in_sign, out_sign;
-  module::getScaleAndZeroPoint(in, in_scale, in_zp, in_sign, asymmetric);
+  module::getScaleAndZeroPoint(in, in_scale, in_zp, in_sign,
+                               asymmetric); // 1.获取输入和输出的量化参数：
   module::getScaleAndZeroPoint(out, out_scale, out_zp, out_sign, output_asym);
   int64_t min_th = in_sign ? -128 : 0;
   int64_t max_th = in_sign ? 127 : 255;
@@ -26,12 +27,13 @@ Value create_lookup_table(Value in, Value out, bool asymmetric,
   OpBuilder builder(op->getContext());
   auto table_type = RankedTensorType::get(
       {1, 1, 1, 256}, builder.getIntegerType(bit_width, out_sign));
-  if (bit_width == 8) {
+  if (bit_width == 8) { // 2.生成查找表
     if (out_sign) {
       std::vector<int8_t> table(256, 0);
-      for (auto i = min_th; i <= max_th; i++) {
+      for (auto i = min_th; i <= max_th;
+           i++) { //遍历输入量化范围内的所有值（min_th 到 max_th）。
         double data = (i - in_zp) * in_scale;
-        data = func(data) / out_scale + out_zp;
+        data = func(data) / out_scale + out_zp; //计算激活函数的输出值。
         int index = i < 0 ? 256 + i : i;
         table[index] = to_int8(data, round_mode);
       }
@@ -50,7 +52,7 @@ Value create_lookup_table(Value in, Value out, bool asymmetric,
     }
   } else if (bit_width == 32) {
     if (out_sign) {
-      std::vector<int32_t> table(256, 0);
+      std::vector<int32_t> table(256, 0); //计算于8bit一致
       for (auto i = min_th; i <= max_th; i++) {
         double data = (i - in_zp) * in_scale;
         data = func(data) / out_scale + out_zp;
@@ -86,7 +88,7 @@ Value create_lookup_table_fp(Value in, Value out, activate_f &&func) {
     std::vector<float> table(256, 0);
     for (int i = min; i < max; i++) {
       int index = i < 0 ? 256 + i : i;
-      table[index] = func(dequant(i, qtype));
+      table[index] = func(dequant(i, qtype)); //计算激活函数的输出值（浮点计算）
     }
     return top::WeightOp::create(out.getDefiningOp(), "table", table,
                                  table_type);
@@ -94,7 +96,8 @@ Value create_lookup_table_fp(Value in, Value out, activate_f &&func) {
     std::vector<uint16_t> table(256, 0);
     for (int i = min; i < max; i++) {
       int index = i < 0 ? 256 + i : i;
-      table[index] = f32_to_f16(F16(func(dequant(i, qtype))));
+      table[index] =
+          f32_to_f16(F16(func(dequant(i, qtype)))); // func(f32->f16) -> f16
     }
     return top::WeightOp::create(out.getDefiningOp(), "table", table,
                                  table_type);

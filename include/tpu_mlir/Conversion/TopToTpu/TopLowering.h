@@ -245,7 +245,9 @@ struct LoweringConfig {
     quantize_map[name] = mode;
   }
 };
-
+// 1.获取全局量化模型。 2.获取指定op的量化模式。3.
+// 如果是CV18xx且量化模式是F16，则改为BF16。4.
+// 如果不是Conv或MatMul且量化模式是INT4，则改为INT8。
 static module::Mode getOpQuantMode(Operation *op) {
   auto real_mode = module::getMode();
   auto op_name = module::getName(op);
@@ -276,22 +278,23 @@ protected:
     Operation *op = opTy.getOperation();
 
     bool isQuantized = LoweringConfig::isQuantized;
-    if (isQuantized) {
+    if (isQuantized) { //用于处理量化（quantized）操作的降级（lowering）过程。它根据操作的存储类型（stype）选择不同的降级方法，并对某些操作属性进行处理。
       auto stype = module::getStorageType(opTy.getODSResults(0)[0]);
-      if (stype.isF32()) {
+      if (stype.isF32()) { //如果存储类型是 F32，调用 LoweringF32。
         if (!isa<top::CastOp, top::Yuv2rgbFormulaOp>(op)) {
           module::removeAttr(op, "round_mode");
           module::removeAttr(op, "first_round_mode");
         }
         LoweringF32(rewriter, opTy);
-      } else if (stype.isF16()) {
+      } else if (stype.isF16()) { //如果存储类型是 F16，调用 LoweringF16。
         if (!isa<top::CastOp, top::Yuv2rgbFormulaOp>(op)) {
           module::removeAttr(op, "round_mode");
           module::removeAttr(op, "first_round_mode");
         }
         LoweringF16(rewriter, opTy);
       } else {
-        LoweringQuantized(rewriter, opTy);
+        LoweringQuantized(rewriter,
+                          opTy); //如果是其他类型，调用 LoweringQuantized。
       }
       return success();
     }
@@ -301,13 +304,13 @@ protected:
       module::removeAttr(op, "first_round_mode");
     }
     switch (real_mode) {
-    case module::Mode::INT8:
+    case module::Mode::INT8: // TODO: WA都是int8？？？
       if (auto conv = dyn_cast<top::ConvOp>(op)) {
         conv.setDoWinograd(LoweringConfig::doWinograd);
       }
       LoweringINT8(rewriter, opTy, module::isAsymmetric());
       break;
-    case module::Mode::INT4:
+    case module::Mode::INT4: // TODO: WA都是int4？？？
       LoweringINT4(rewriter, opTy, module::isAsymmetric());
       break;
     case module::Mode::F16:

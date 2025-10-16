@@ -10,7 +10,10 @@
 // Main entry function for mlir-opt for when built as standalone binary.
 //
 //===----------------------------------------------------------------------===//
+#include <cstdio>  // for printf()
+#include <cstdlib> // for getenv()
 #include <fstream>
+#include <unistd.h> // for getpid() and usleep()
 
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"
 #include "tpu_mlir/InitAll.h"
@@ -20,6 +23,19 @@ const std::string PluginPrePass[] = {"--init"};
 std::vector<std::string> PluginPostPass;
 
 int main(int argc, char **argv) {
+
+  if (getenv("TPU_MLIR_DEBUG_WAIT")) {
+    volatile int debugger_attached = 0;
+    printf("TPU-MLIR Process ID: %d\n", getpid());
+    printf("Waiting for debugger...\n");
+    printf("Run: gdb -p %d\n", getpid());
+    printf("Then: set variable debugger_attached = 1\n");
+
+    while (!debugger_attached) {
+      usleep(100000); // 100ms
+    }
+  }
+
   tpu_mlir::registerAllPasses();
 
   DialectRegistry registry;

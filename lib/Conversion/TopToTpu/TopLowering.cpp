@@ -185,11 +185,11 @@ Value do_requant(Location name_loc, Value input, Type to_type, bool tensorType,
                                                  ValueRange{input}, attrs);
   return newOp.getOutput();
 }
-
+//使用张量量化参数
 Value do_requant(Location name_loc, Value input, Value quant, Type to_type,
                  bool tensorType, tpu::RequantMode mode, tpu::RoundMode rmode) {
   [[maybe_unused]] auto from_stype = module::getStorageType(input);
-  auto to_stype = module::getStorageType(to_type);
+  auto to_stype = module::getStorageType(to_type); // 1.获取目标存储类型
   auto ctx = input.getContext();
   OpBuilder builder(ctx);
   std::vector<Value> operands = {input, quant};
@@ -201,7 +201,8 @@ Value do_requant(Location name_loc, Value input, Value quant, Type to_type,
   auto inputOp = input.getDefiningOp();
   auto quantOp = quant.getDefiningOp();
   auto inputIt = inputOp->getIterator();
-  if (inputIt->isBeforeInBlock(quantOp)) {
+  if (inputIt->isBeforeInBlock(
+          quantOp)) { //设置新操作的插入点，确保新操作在输入张量之后插入。
     builder.setInsertionPointAfterValue(quant);
   } else {
     builder.setInsertionPointAfterValue(input);
@@ -341,7 +342,9 @@ int32_t do_const_dequant(Value input, int64_t multiplier, int64_t shift,
   v = RightShiftRound(v, shift, ROUNDING_HALF_AWAY_FROM_ZERO);
   return v;
 }
-
+//是一个用于对权重（常量张量）进行反量化（dequantization）的函数。它将量化的权重数据（如
+//int8 或
+//uint8）转换为反量化后的整数数据（int32），并生成一个新的权重操作（top::WeightOp）
 Value do_weight_dequant(Value input, Type to_type, int64_t multiplier,
                         int64_t shift, int64_t lshift) {
   auto op = input.getDefiningOp();

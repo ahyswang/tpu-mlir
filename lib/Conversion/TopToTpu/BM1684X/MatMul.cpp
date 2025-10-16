@@ -700,7 +700,9 @@ void MatMulLowering::LoweringF16(PatternRewriter &rewriter,
 
     if (auto wOp = dyn_cast<top::WeightOp>(in.getDefiningOp())) {
       // only linear layer will be replaced
-      if (i == 1 && op.getWeightBits().has_value() &&
+      if (i == 1 && op.getWeightBits().has_value() && //果当前操作数是权重（i ==
+                                                      //1），并且权重具有位宽信息（WeightBits），则需要将权重转换为
+                                                      //FP16 格式。
           wOp.getType().cast<RankedTensorType>().getShape().size() == 2) {
         auto noneOp = module::getNoneOp(op);
         operands.insert(operands.end(),
@@ -709,7 +711,7 @@ void MatMulLowering::LoweringF16(PatternRewriter &rewriter,
         auto weight_bits =
             rewriter.getNamedAttr("weight_bits", op.getWeightBitsAttr());
         attrs.push_back(weight_bits);
-        if (true == op.getDoRelu()) {
+        if (true == op.getDoRelu()) { // 如果操作需要进行 ReLU 激活函数处理
           auto name = module::getName(op->getResult(0));
           auto matmul_loc =
               NameLoc::get(rewriter.getStringAttr(name.str() + "_a16matmul"));
@@ -727,7 +729,9 @@ void MatMulLowering::LoweringF16(PatternRewriter &rewriter,
                                                       attrs);
         return;
       }
-      if (i == 2 && bias_use_fp32) {
+      if (i == 2 &&
+          bias_use_fp32) { //如果当前操作数是偏置（i == 2），并且需要保持为 FP32
+                           //格式（bias_use_fp32），则直接使用原始偏置。
         ASSERT_OP(module::getStorageType(in).isF32() && "bias has to be f32",
                   op);
         operands.push_back(in);
@@ -738,7 +742,8 @@ void MatMulLowering::LoweringF16(PatternRewriter &rewriter,
       operands.push_back(in);
     }
   }
-  auto noneOp_multi = module::getNoneOp(op);
+  auto noneOp_multi = module::getNoneOp(
+      op); //添加额外的操作数（如 NoneOp 和缓冲区），以满足 TPU 操作的输入要求。
   operands.push_back(noneOp_multi);
   // buffer
   operands.push_back(module::getNoneOp(op));

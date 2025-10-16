@@ -62,7 +62,7 @@ void ConvLowering::LoweringINT8(PatternRewriter &rewriter, top::ConvOp op,
       LoweringF32(rewriter, op);
     return;
   }
-
+  // 2. 量化输入和输出
   rewriter.setInsertionPointAfter(op);
   std::vector<Value> operands;
   operands.push_back(op.getInput());
@@ -122,7 +122,7 @@ void ConvLowering::LoweringINT8(PatternRewriter &rewriter, top::ConvOp op,
         << " : found input too small in conv lowering int8, scale change to "
         << in_scale << " bias is: " << bias_max << "\n";
   }
-
+  // 3. 量化权重
   std::vector<int64_t> rshift_v;
   std::vector<int64_t> multiplier_v;
   double scale_w;
@@ -130,11 +130,15 @@ void ConvLowering::LoweringINT8(PatternRewriter &rewriter, top::ConvOp op,
   int inner_dim = filter_size / p.oc;
   for (int c = 0; c < p.oc; c++) { // per-channel量化
     float *p_filter = filter_f32->data() + c * inner_dim;
-    if (all_i8) {
+    if (all_i8) { //如果所有权重已经可以表示为 INT8，则直接使用 1.0 / times
+                  //作为比例。
       scale_w = 1.0 / times;
-    } else if (filterOp.getScale().has_value() && weight_scale_v->size()) {
+    } else if (
+        filterOp.getScale().has_value() &&
+        weight_scale_v
+            ->size()) { //如果权重操作（filterOp）中已经包含比例信息，则直接使用。
       scale_w = weight_scale_v->data()[c];
-    } else {
+    } else { //如果没有预定义比例，则动态计算
       float w_max = findMaxabs(p_filter, inner_dim);
       scale_w = std::max(w_max / fqmax, 1e-5f);
     }
@@ -145,7 +149,8 @@ void ConvLowering::LoweringINT8(PatternRewriter &rewriter, top::ConvOp op,
 
     if (fsign) {
       for (int t = 0; t < inner_dim; t++) {
-        filter_i8->data()[c * inner_dim + t] = to_int8(p_filter[t] / scale_w);
+        filter_i8->data()[c * inner_dim + t] =
+            to_int8(p_filter[t] / scale_w); //量化权重元素
       }
     } else {
       for (int t = 0; t < inner_dim; t++) {
@@ -153,13 +158,13 @@ void ConvLowering::LoweringINT8(PatternRewriter &rewriter, top::ConvOp op,
       }
     }
 
-    double bias_w_xz = 0;
+    double bias_w_xz = 0; //偏置调整
     if (in_zp) {
       for (int t = 0; t < inner_dim; t++) {
         bias_w_xz += filter_i8->data()[c * inner_dim + t] * in_zp;
       }
     }
-
+    // 4. 量化偏置(消除零点引入的误差)
     if (p.has_bias) {
       bias_int32->data()[c] =
           std::round(bias_fp32->data()[c] / (scale_w * in_scale) - bias_w_xz);
@@ -213,7 +218,9 @@ void ConvLowering::LoweringINT8(PatternRewriter &rewriter, top::ConvOp op,
   } else {
     newType = getQuantInt8Type(op.getOutput(), asymmetric);
   }
-
+  // 3D
+  // 卷积通常涉及更多的计算复杂度和更大的数据范围，因此在量化过程中，可能需要使用更高精度的
+  // int32 类型来存储中间结果，以避免精度损失。TODO:????
   bool output_int32 = false;
   if (op.getKernelShape().size() == 3) {
     output_int32 = true;
@@ -269,13 +276,14 @@ void ConvLowering::LoweringINT4(PatternRewriter &rewriter, top::ConvOp op,
   llvm::errs() << "start conv LoweringINT4, name:"
                << module::getName(op.getOperation()).str() << "\n";
   auto p = op.parseParam();
-  if (p.is_dw /*|| p.sw > 1*/) {
+  if (p.is_dw /*|| p.sw > 1*/) { //如果卷积是深度可分离卷积（is_dw），则直接调用
+                                 //LoweringINT8。
     return LoweringINT8(rewriter, op, asymmetric);
   }
   rewriter.setInsertionPointAfter(op);
   std::vector<Value> operands;
-
-  // in/out scale/zp
+  // 如果输入张量有 INT4 的量化比例（InInt4Scale），说明上一层是
+  // INT8，需要将输入张量从 INT8 重新量化为 INT4。 in/out scale/zp
   double in_scale, out_scale;
   int64_t in_zp, out_zp;
   double in_int8_scale;
@@ -313,7 +321,7 @@ void ConvLowering::LoweringINT4(PatternRewriter &rewriter, top::ConvOp op,
   }
   module::getScaleAndZeroPoint(op.getOutput(), out_scale, out_zp, asymmetric,
                                bitwidth);
-  // filter
+  // filter  // 权重的scale值
   auto filterOp = cast<top::WeightOp>(op.getFilter().getDefiningOp());
   auto filter_f32 = filterOp.read<float>();
   float fmax, fmin;
@@ -324,7 +332,7 @@ void ConvLowering::LoweringINT4(PatternRewriter &rewriter, top::ConvOp op,
   if (filterOp.getScale().has_value()) {
     weight_scale_v = module::getF64Array(filterOp.getScale().value());
   }
-
+  // 获取weight/bias存储的值
   i32_array_t bias_int32;
   std::shared_ptr<std::vector<float>> bias_fp32;
   auto filter_i8 = std::make_shared<std::vector<int8_t>>(filter_f32->size());
@@ -336,15 +344,19 @@ void ConvLowering::LoweringINT4(PatternRewriter &rewriter, top::ConvOp op,
   } else if (in_zp) {
     bias_int32 = std::make_shared<std::vector<int32_t>>(p.oc, 0);
   }
-
-  bool all_next_layer_is_int8 = true;
-  bool all_next_layer_is_int4 = true;
+  //并据此判断后续层是否全部为 INT4 或 INT8 类型。如果后续层既有 INT4 类型，也有
+  //INT8 类型，则需要特殊处理（如输出 INT32 类型并分别重新量化为 INT4 和
+  //INT8）。
+  bool all_next_layer_is_int8 =
+      true; //说明所有后续层都是 INT8 类型，则当前层可以输出 INT8 类型。
+  bool all_next_layer_is_int4 =
+      true; //说明所有后续层都是 INT4 类型，则当前层可以输出 INT4 类型。
   double out_int8_scale =
       op.getOutInt8Scale().value_or(APFloat(1.0)).convertToDouble();
   double out_int8_zp =
       op.getOutInt8Zp().value_or(APFloat(0.0)).convertToDouble();
   for (auto user : op->getUsers()) {
-    if (module::isInt4Op(user)) {
+    if (module::isInt4Op(user)) { //判断 user 是否支持 INT4 量化。
       all_next_layer_is_int8 = false;
     } else {
       all_next_layer_is_int4 = false;
@@ -357,7 +369,7 @@ void ConvLowering::LoweringINT4(PatternRewriter &rewriter, top::ConvOp op,
     llvm::errs() << "directly output int8\n";
   else
     llvm::errs() << "directly output int4\n";
-
+  // 4. 量化权重
   std::vector<int64_t> rshift_v;
   std::vector<int64_t> multiplier_v;
   double scale_w;
@@ -440,7 +452,7 @@ void ConvLowering::LoweringINT4(PatternRewriter &rewriter, top::ConvOp op,
   if (op.getKernelShape().size() == 3) {
     output_int32 = true;
   }
-  if (output_int32) {
+  if (output_int32) { // Conv输出32bit + do_requant
     // to int32, and then requant to int8
     auto convType = RankedTensorType::get(module::getShape(op.getOutput()),
                                           rewriter.getI32Type());
@@ -479,7 +491,8 @@ void ConvLowering::LoweringINT4(PatternRewriter &rewriter, top::ConvOp op,
     return;
   }
 
-  if (!all_next_layer_is_int8 && !all_next_layer_is_int4) {
+  if (!all_next_layer_is_int8 &&
+      !all_next_layer_is_int4) { // 输出32bit + do_requant int8/int4
     // to int32, and then requant to int8
     auto convType = RankedTensorType::get(module::getShape(op.getOutput()),
                                           rewriter.getI32Type());
@@ -578,7 +591,7 @@ void ConvLowering::LoweringINT4(PatternRewriter &rewriter, top::ConvOp op,
       }
     }
     rewriter.replaceOp(op, {conv_out});
-  } else {
+  } else { // 输出 INT4
     auto ctx = op->getContext();
     attrs.push_back(rewriter.getNamedAttr(
         "quant_mode",

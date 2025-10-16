@@ -1609,7 +1609,9 @@ bool is_all_int8(const std::vector<float> &data, float scale, bool sign) {
   }
   return true;
 }
-
+//用于检查和尝试将浮点数数据转换为 INT8
+//数据的函数。它通过调整缩放因子（scale），判断给定的浮点数数组是否可以在 INT8
+//范围内表示。
 bool to_all_int8(const std::vector<float> &data, float &scale, bool sign) {
   float s = 0;
   for (int i = 0; i < 7; i++) {

@@ -24,6 +24,11 @@ from calibration.utils import parse_method_list
 from utils.log_setting import logger
 
 if __name__ == '__main__':
+    # import debugpy
+    # print("localhost start ---------------------")
+    # debugpy.listen(("localhost", 5678))
+    # debugpy.wait_for_client()
+
     print("TPU-MLIR {}".format(pymlir.__version__))
     # yapf: disable
     parser = argparse.ArgumentParser()

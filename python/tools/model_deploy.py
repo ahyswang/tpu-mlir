@@ -599,6 +599,10 @@ if __name__ == '__main__':
     parser.add_argument("--debug_cmd", default="", type=str,
                         help="debug cmd")
 
+    # import debugpy
+    # print("localhost start ---------------------")
+    # debugpy.listen(("localhost", 5678))
+    # debugpy.wait_for_client()
     # yapf: enable
     args = parser.parse_args()
     deprecated_option(args.io_alone, "DEPRECATED, please use --addr_mode io_alone")

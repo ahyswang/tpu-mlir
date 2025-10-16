@@ -94,7 +94,8 @@ void init_loglevel(int32_t log_level) { SetLogFlag(log_level); }
 void setWeightInMemFlag(bool enable) { b_weight_in_mem = enable; }
 
 bool getWeightInMemFlag() { return b_weight_in_mem; }
-
+//是一个辅助函数，用于在 MLIR 中获取或创建一个 top::NoneOp 操作。NoneOp
+//是一种特殊的操作，通常用于表示空值（None），在构建操作图时作为占位符使用。
 top::NoneOp getNoneOp(Operation *op) {
   assert(op != nullptr);
   if (auto noneOp = dyn_cast<top::NoneOp>(op)) {
@@ -110,12 +111,15 @@ top::NoneOp getNoneOp(Operation *op) {
   }
   auto &block = funcOp.front();
   auto &topOp = block.front();
-  if (auto noneOp = dyn_cast<top::NoneOp>(topOp)) {
+  if (auto noneOp = dyn_cast<top::NoneOp>(
+          topOp)) { //如果当前函数的入口块中已有 NoneOp，直接返回。
     return noneOp;
   }
   auto ctx = op->getContext();
   auto builder = OpBuilder(ctx);
-  builder.setInsertionPointToStart(&block);
+  builder.setInsertionPointToStart(
+      &block); //如果当前函数中没有 NoneOp，则在函数的入口块中创建一个新的
+               //NoneOp。
   auto NoneOp = builder.create<top::NoneOp>(builder.getUnknownLoc(),
                                             builder.getNoneType());
   return NoneOp;
@@ -1745,7 +1749,7 @@ void getInputsOutputs(func::CallOp call, std::vector<Value> &inputs,
     });
   }
 }
-
+// 通过rmin来判断是有符号还是无符号
 void getScaleAndZeroPoint(double rmin, double rmax, double &scale,
                           int64_t &zeroPoint, int bitwidth) {
   int qmin = rmin < 0 ? -128 : 0;

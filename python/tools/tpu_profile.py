@@ -36,6 +36,11 @@ def profileArgParser():
 
 
 if __name__ == "__main__":
+    # if True:
+    #     import debugpy
+    #     print("localhost start ---------------------")
+    #     debugpy.listen(("localhost", 5678))
+    #     debugpy.wait_for_client()
     parser = profileArgParser()
     args, unknown = parser.parse_known_args(sys.argv[1:] + ['profile_out'])
     if args.mode == "time":

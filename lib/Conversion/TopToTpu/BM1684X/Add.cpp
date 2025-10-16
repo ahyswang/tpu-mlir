@@ -181,7 +181,7 @@ void AddLowering::LoweringF8(PatternRewriter &rewriter,
 void AddLowering::LoweringQuantized(PatternRewriter &rewriter,
                                     top::AddOp addOp) const {
   if (module::isUniformQuantized(addOp.getInputs()[0], addOp.getOutput()) ==
-      false) {
+      false) { // 1. 检查输入和输出是否量化
     llvm_unreachable("input output should be quantized");
   }
   auto op = addOp.getOperation();
@@ -196,7 +196,7 @@ void AddLowering::LoweringQuantized(PatternRewriter &rewriter,
   double o_scale;
   module::getScaleAndZeroPoint(addOp.getOutput(), o_scale, zeropoint, true);
 
-  // generate quant param from given scale
+  // generate quant param from given scale //2. 计算量化参数
   double scale, scale_max;
   for (int i = 0; i < nInputs; i++) {
     auto input = op->getOperand(i);
@@ -208,7 +208,7 @@ void AddLowering::LoweringQuantized(PatternRewriter &rewriter,
       scale_max = scale > scale_max ? scale : scale_max;
     }
   }
-  int64_t scalei, shifti;
+  int64_t scalei, shifti; // 3. 生成乘法器和右移量
   for (int i = 0; i < nInputs; i++) {
     auto scale_f = scale_v[i] / (scale_max * 2);
     QuantizeMultiplier(scale_f, &scalei, &shifti);
@@ -223,7 +223,8 @@ void AddLowering::LoweringQuantized(PatternRewriter &rewriter,
   for (int i = 0; i < nInputs; ++i) {
     auto input = addOp->getOperand(i);
     if (module::isWeight(input)) {
-      // do dequant in here
+      // do dequant in here //如果输入是权重（常量），调用 do_weight_dequant
+      // 进行反量化。
       int64_t num_elem = module::getNumElements(input);
       if (num_elem != 1) {
         auto new_input = do_weight_dequant(input, rewriter.getI32Type(),
@@ -235,7 +236,7 @@ void AddLowering::LoweringQuantized(PatternRewriter &rewriter,
         is_const = true;
       }
     } else {
-      // do dequant
+      // do dequant  //如果输入是动态值，调用 do_dequant 生成反量化操作。
       std::string name =
           module::getName(op).str() + "_dequant_" + std::to_string(i);
       auto name_loc = NameLoc::get(rewriter.getStringAttr(name));
@@ -245,7 +246,7 @@ void AddLowering::LoweringQuantized(PatternRewriter &rewriter,
       operands.push_back(input_dequant);
     }
   }
-  // add
+  // add  //5. 生成量化的 Add 操作
   std::string suffix = "_add";
   std::string new_name = module::getName(op).str() + suffix;
   std::vector<NamedAttribute> attrs;
@@ -269,7 +270,7 @@ void AddLowering::LoweringQuantized(PatternRewriter &rewriter,
         rewriter.create<tpu::AddOp>(name_loc, newType, operands, attrs);
     addout = newOp.getOutput();
   }
-  // requant to int8
+  // requant to int8  //6. 重新量化输出
   QuantizeMultiplier((scale_max * 2) / ((1 << lshift) * o_scale), &scalei,
                      &shifti);
   auto v = do_requant(op->getLoc(), addout, addOp.getOutput().getType(), true,

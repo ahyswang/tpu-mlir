@@ -470,7 +470,10 @@ if __name__ == '__main__':
     parser.add_argument("--replace_topk_indices", default=False, type=str2bool, help="replace topk indices with the correct onnx topk indices")
     parser.add_argument("--yuv_type", default='', type=str.upper,choices=supported_yuv_type,
                         help="pixel format of yuv file")
-
+    # import debugpy
+    # print("localhost start ---------------------")
+    # debugpy.listen(("localhost", 5678))
+    # debugpy.wait_for_client()
     # yapf: enable
     parser = get_preprocess_parser(existed_parser=parser)
     args, unknown_args = parser.parse_known_args()

@@ -119,11 +119,13 @@ public:
     }
     Value in = op.getInput();
     Value out = op.getOutput();
-    if (!module::isCalibratedType(in)) {
+    if (!module::isCalibratedType(
+            in)) { // 检查输入是否为校准类型。如果不是校准类型，则直接返回失败，表示不需要处理。
       return failure();
     }
     auto in_qtype = module::getCalibratedType(in);
-    if (module::isCalibratedType(out)) {
+    if (module::isCalibratedType(
+            out)) { // 检查输出是否为校准类型。如果是校准类型，则比较输入和输出的量化范围（最大值和最小值）。如果它们相同，则表示不需要更改输出的量化范围，直接返回失败。
       auto out_qtype = module::getCalibratedType(out);
       if (in_qtype.getMax() == out_qtype.getMax() &&
           in_qtype.getMin() == out_qtype.getMin()) {
@@ -206,7 +208,7 @@ struct ForwardArg : public OpRewriterPatternEx<top::ArgOp> {
   }
   bool shouldPrint(top::ArgOp op) const override { return false; }
 };
-
+//用于确保某些操作的输入和输出的符号（正负号）保持一致。它是量化模型校准过程中非常重要的一部分，主要用于解决硬件限制或计算图中符号不一致的问题。
 template <typename OpTy>
 struct KeepSignPattern : public OpRewriterPatternEx<OpTy> {
 public:
@@ -217,7 +219,10 @@ public:
                                     PatternRewriter &rewriter) const override {
     Value in = op.getInput();
     Value out = op.getOutput();
-    if (!module::isCalibratedType(in, out)) {
+    if (!module::isCalibratedType(
+            in,
+            out)) { //检查输入 in 和输出 out
+                    //是否为校准类型（CalibratedType）。如果不是校准类型，则直接返回失败，表示不需要处理。
       return failure();
     }
     auto in_qtype = module::getCalibratedType(in);
@@ -225,14 +230,17 @@ public:
     float min;
     if (in_qtype.getMin() < 0) {
       if (out_qtype.getMin() < 0) {
-        return failure();
+        return failure(); // 输入输出都是都是有符号的，不需要处理
       }
-      min = -out_qtype.getMax() * 0.1;
+      min =
+          -out_qtype.getMax() *
+          0.1; //输入小于0，输出大于等于0，将输出设置为有符号，通过乘以
+               //0.1，可以将负值的绝对值限制在一个较小的范围内，从而避免这些问题。
     } else {
-      if (out_qtype.getMin() >= 0) {
+      if (out_qtype.getMin() >= 0) { // 输入大于等于0，输出大于等于0，不需要处理
         return failure();
       }
-      min = 0;
+      min = 0; // 输入大于等于0，输出小于0，将输出设置为无符号
     }
     auto etype = module::getStorageType(out);
     auto new_qtype =
@@ -332,11 +340,13 @@ public:
     for (int i = 0; i < num_inputs; i++) {
       auto in = op.getInputs()[i];
       auto coeff = coeffs->at(i);
-      if (!module::isCalibratedType(in)) {
+      if (!module::isCalibratedType(in)) { //如果输入不是校准类型，直接返回失败
         return failure();
       }
       auto in_qtype = module::getCalibratedType(in);
-      if (in_qtype.getMin() * coeff < 0 || in_qtype.getMax() * coeff < 0) {
+      if (in_qtype.getMin() * coeff < 0 ||
+          in_qtype.getMax() * coeff < 0) { // 如果输入的最小值或最大值乘以系数（coeff）后出现负值，则说明输入的符号不一致，设置
+                                           // is_sign = true。
         is_sign = true;
         break;
       }
@@ -344,7 +354,9 @@ public:
     auto out = op.getOutput();
     auto out_qtype = module::getCalibratedType(out);
     double min = out_qtype.getMin();
-    if (is_sign == false && min < 0) {
+    if (is_sign == false &&
+        min < 0) { //如果输入的符号一致（is_sign == false），但输出的最小值小于
+                   //0，则需要将输出的最小值调整为 0。
       min = 0;
     } else {
       return failure();
@@ -554,7 +566,7 @@ public:
   }
   bool shouldPrint(top::CompareOp op) const override { return false; }
 };
-
+//用于处理具有多个输入和单个输出的操作（OpTy），并确保输入和输出的量化类型（校准类型）一致。它的主要作用是通过反向传播的方式调整输入的量化类型，使其与输出的量化类型保持一致。
 template <typename OpTy>
 struct BackwardMutiInSingleOut : public OpRewriterPatternEx<OpTy> {
 public:
@@ -566,7 +578,7 @@ public:
     // TODO: need to be more clever
     for (auto in : op.getInputs()) {
       if (!module::isCalibratedType(in)) {
-        return failure();
+        return failure(); //如果输入不是校准类型（CalibratedType），直接返回失败。
       }
       if (in.hasOneUse()) {
         continue;
@@ -580,9 +592,9 @@ public:
 
     Value out = op.getOutput();
     if (!module::isCalibratedType(out)) {
-      return failure();
+      return failure(); //检查操作的输出是否是校准类型。如果不是，直接返回失败。
     }
-    // checkout all inputs have the same sign
+    // checkout all inputs have the same sign //检查所有输入是否具有相同的符号
     auto in_0 = op.getInputs()[0];
     auto in_0_qtype = module::getCalibratedType(in_0);
     bool un_signed = in_0_qtype.getMin() >= 0;
@@ -595,7 +607,7 @@ public:
     }
 
     auto out_qtype = module::getCalibratedType(out);
-    // checkout all input cali is the same
+    // checkout all input cali is the same  //检查所有输入的校准范围是否一致
     bool same = true;
     for (uint i = 1; i < op.getInputs().size(); i++) {
       auto qtype = module::getCalibratedType(op.getInputs()[i]);
@@ -609,14 +621,15 @@ public:
       if (out_qtype.getMin() == in_0_qtype.getMin() &&
           out_qtype.getMax() == in_0_qtype.getMax()) {
         // do nothing
-        return failure();
+        return failure(); //如果所有输入的校准范围一致，并且输出的校准范围与输入一致，则无需修改，返回失败。
       }
       auto out_type = out.getType().cast<RankedTensorType>();
       auto new_type = RankedTensorType::get(out_type.getShape(), in_0_qtype);
-      out.setType(new_type);
+      out.setType(
+          new_type); //将输出的类型调整为与输入一致的校准类型，并返回成功。
       return success();
     }
-
+    //如果输入校准范围不一致，调整输入类型
     for (Value in : op.getInputs()) {
       auto in_type = in.getType().cast<RankedTensorType>();
       auto new_type = RankedTensorType::get(in_type.getShape(), out_qtype);
@@ -1626,91 +1639,81 @@ void ConvertTopToTpu::runOnOperation() {
     llvm_unreachable("unimplemented tpu dialect!");
   }
 }
-
+//处理模型的校准（Calibration）过程
 void ConvertTopToTpu::calibration_process() {
-  if (!module::isState(module::State::TOP_CALIBRATED)) {
+  if (!module::isState(module::State::TOP_CALIBRATED)) { // 1. 校准状态检查
     return;
   }
-  // clang-format off
-    RewritePatternSet patterns(ctx_);
-    patterns.add<ForwardCalibartion<top::ReshapeOp>,
-                 ForwardCalibartion<top::PermuteOp>>(ctx_);
-    applyPatternsAndFoldGreedily(module_, std::move(patterns));
-    // keep sign for some ops, keep sign before backward speading to check the sign consistency in backward
-    // backend not support in out not the same sign
-    patterns.clear();
-    patterns.add<KeepSignPattern<top::AvgPoolOp>, KeepSignPattern<top::MaxPoolOp>, KeepAddSignPattern,
-                 KeepSignPattern<top::AbsOp>,
-                 SetSubConstSignPattern>(ctx_);
+  // clang-format off   //2. 前向校准（Forward Calibration）
+  RewritePatternSet patterns(ctx_);
+  patterns.add<ForwardCalibartion<top::ReshapeOp>,
+               ForwardCalibartion<top::PermuteOp>>(ctx_);
+  applyPatternsAndFoldGreedily(module_, std::move(patterns));
+  // keep sign for some ops, keep sign before backward speading to check the
+  // sign consistency in backward backend not support in out not the same sign
+  patterns.clear(); // 3. 保持符号一致性
+  patterns.add<KeepSignPattern<top::AvgPoolOp>, KeepSignPattern<top::MaxPoolOp>,
+               KeepAddSignPattern, KeepSignPattern<top::AbsOp>,
+               SetSubConstSignPattern>(ctx_);
 
-    applyPatternsAndFoldGreedily(module_, std::move(patterns));
-    patterns.clear();
-    if (!module::isCV18xx() && !module::isF8Modes()) {
-      patterns.add<KeepMulSignPattern<top::MulOp>, /*KeepMulSignPattern,*/
+  applyPatternsAndFoldGreedily(module_, std::move(patterns));
+  patterns.clear();
+  if (!module::isCV18xx() && !module::isF8Modes()) {
+    patterns.add<KeepMulSignPattern<top::MulOp>, /*KeepMulSignPattern,*/
                  SetSubConstSignPattern, SetSubSignPattern>(ctx_);
-      applyPatternsAndFoldGreedily(module_, std::move(patterns));
-      patterns.clear();
-    }
-    patterns.add<BackwardMutiInSingleOut<top::ConcatOp>,
-                 BackwardMutiInSingleOut<top::MinOp>,
-                 BackwardMutiInSingleOut<top::MaxOp>>(ctx_);
     applyPatternsAndFoldGreedily(module_, std::move(patterns));
     patterns.clear();
-    patterns.add<BackwardCalibartion<top::ReluOp>,
-                 BackwardCalibartion<top::MaxPoolOp>,
-                 BackwardCalibartion<top::MaxPoolWithMaskOp>,
-                 BackwardCalibartion<top::Depth2SpaceOp>,
-                 //BackwardCalibartion<top::LeakyReluOp, true>,
-                //  BackwardCalibartion<top::PReluOp>,
-                 BackwardCalibartion<top::AbsOp>>(ctx_);
-    if (!module::isCV18xx()) {
-      // notice when it's dominated by negative value
-      // and factor is very small it'll cause cumulative error
-      patterns.add<BackwardCalibartion<top::PReluOp, true>>(ctx_);
-      patterns.add<BackwardCalibartion<top::LeakyReluOp, true>>(ctx_);
-    } else {
-      patterns.add<BackwardCalibartion<top::LeakyReluOp, false>>(ctx_);
-      // need consideration
-      patterns.add<BackwardCalibartion<top::ScatterNDOp, false>>(ctx_);
-    }
-    applyPatternsAndFoldGreedily(module_, std::move(patterns));
-    patterns.clear();
+  } // 4. 反向校准（Backward Calibration）
+  patterns.add<BackwardMutiInSingleOut<top::ConcatOp>,
+               BackwardMutiInSingleOut<top::MinOp>,
+               BackwardMutiInSingleOut<top::MaxOp>>(ctx_);
+  applyPatternsAndFoldGreedily(module_, std::move(patterns));
+  patterns.clear();
+  patterns.add<BackwardCalibartion<top::ReluOp>,
+               BackwardCalibartion<top::MaxPoolOp>,
+               BackwardCalibartion<top::MaxPoolWithMaskOp>,
+               BackwardCalibartion<top::Depth2SpaceOp>,
+               // BackwardCalibartion<top::LeakyReluOp, true>,
+               //  BackwardCalibartion<top::PReluOp>,
+               BackwardCalibartion<top::AbsOp>>(ctx_);
+  if (!module::isCV18xx()) {
+    // notice when it's dominated by negative value
+    // and factor is very small it'll cause cumulative error
+    patterns.add<BackwardCalibartion<top::PReluOp, true>>(ctx_);
+    patterns.add<BackwardCalibartion<top::LeakyReluOp, true>>(ctx_);
+  } else {
+    patterns.add<BackwardCalibartion<top::LeakyReluOp, false>>(ctx_);
+    // need consideration
+    patterns.add<BackwardCalibartion<top::ScatterNDOp, false>>(ctx_);
+  }
+  applyPatternsAndFoldGreedily(module_, std::move(patterns));
+  patterns.clear();
 
-    if (module::isBM1684XFamily() || module::isBM1690Family()) {
-      patterns.add<BackwardAddThToMuls<top::AddOp>>(ctx_);
-      applyPatternsAndFoldGreedily(module_, std::move(patterns));
-      patterns.clear();
-    }
-    patterns.add<CompareCalibartion>(ctx_);
+  if (module::isBM1684XFamily() || module::isBM1690Family()) {
+    patterns.add<BackwardAddThToMuls<top::AddOp>>(ctx_);
     applyPatternsAndFoldGreedily(module_, std::move(patterns));
     patterns.clear();
-    if (!module::isF8Modes()) {
-      patterns.add<SelectiveWhere,
-      SelectiveMaskedFill>(ctx_);
-      applyPatternsAndFoldGreedily(module_, std::move(patterns));
-      patterns.clear();
-    }
-    patterns.add<ForwardCalibartion<top::ReluOp>,
-                 ForwardCalibartion<top::MaxPoolOp>,
-                 ForwardCalibartion<top::MinConstOp>,
-                 ForwardCalibartion<top::MaxConstOp>,
-                 ForwardCalibartion<top::MaxPoolWithMaskOp>,
-                 ForwardCalibartion<top::MaxUnpoolOp>,
-                 ForwardCalibartion<top::ReshapeOp>,
-                 ForwardCalibartion<top::UnsqueezeOp>,
-                 ForwardCalibartion<top::SqueezeOp>,
-                 ForwardCalibartion<top::SliceOp>,
-                 ForwardCalibartion<top::TileOp>,
-                 ForwardCalibartion<top::PadOp>,
-                 ForwardCalibartion<top::PermuteOp>,
-                 ForwardCalibartion<top::ReverseOp>,
-                 ForwardCalibartion<top::UpsampleOp>,
-                 ForwardCalibartion<top::LeakyReluOp>,
-                //  ForwardCalibartion<top::PReluOp>,
-                 ForwardCalibartion<top::AbsOp>,
-                 ForwardMulConst,
-                 ForwardArg
-                >(ctx_);
+  }
+  patterns.add<CompareCalibartion>(ctx_);
+  applyPatternsAndFoldGreedily(module_, std::move(patterns));
+  patterns.clear();
+  if (!module::isF8Modes()) {
+    patterns.add<SelectiveWhere, SelectiveMaskedFill>(ctx_);
+    applyPatternsAndFoldGreedily(module_, std::move(patterns));
+    patterns.clear();
+  }
+  patterns.add<
+      ForwardCalibartion<top::ReluOp>, ForwardCalibartion<top::MaxPoolOp>,
+      ForwardCalibartion<top::MinConstOp>, ForwardCalibartion<top::MaxConstOp>,
+      ForwardCalibartion<top::MaxPoolWithMaskOp>,
+      ForwardCalibartion<top::MaxUnpoolOp>, ForwardCalibartion<top::ReshapeOp>,
+      ForwardCalibartion<top::UnsqueezeOp>, ForwardCalibartion<top::SqueezeOp>,
+      ForwardCalibartion<top::SliceOp>, ForwardCalibartion<top::TileOp>,
+      ForwardCalibartion<top::PadOp>, ForwardCalibartion<top::PermuteOp>,
+      ForwardCalibartion<top::ReverseOp>, ForwardCalibartion<top::UpsampleOp>,
+      ForwardCalibartion<top::LeakyReluOp>,
+      //  ForwardCalibartion<top::PReluOp>,
+      ForwardCalibartion<top::AbsOp>, ForwardMulConst, ForwardArg>(ctx_);
   // clang-format on
   if (!module::isCV18xx()) {
     // notice it will cause cumulative error
@@ -1730,7 +1733,7 @@ void ConvertTopToTpu::calibration_process() {
                KeepAddSignPattern, KeepSignPattern<top::AbsOp>,
                SetSubConstSignPattern>(ctx_);
   applyPatternsAndFoldGreedily(module_, std::move(patterns));
-  patterns.clear();
+  patterns.clear(); // 5. 特殊操作处理
   patterns.add<SelectiveWhere, SelectiveMaskedFill>(ctx_);
   applyPatternsAndFoldGreedily(module_, std::move(patterns));
   patterns.clear();
@@ -2149,7 +2152,7 @@ module::Mode ConvertTopToTpu::qmode(const std::string &mode) {
   llvm_unreachable("Unknown quantize mode");
   return module::Mode::F32;
 }
-
+// 1. 初始化量化类型表。
 void ConvertTopToTpu::init_qtable() {
   LoweringConfig::quantize_map.clear();
   if (module::isHighPrecision()) {
@@ -2165,10 +2168,11 @@ void ConvertTopToTpu::init_qtable() {
   if (qtable.empty()) {
     return;
   }
-  std::regex map_pattern("\\S+\\s+\\S+");
-  std::regex name_pattern("\\S+");
-  std::regex info_pattern("#.*");
-  std::regex empty_pattern("^\\s*$");
+  std::regex map_pattern(
+      "\\S+\\s+\\S+"); // 匹配操作名称和量化模式的映射行（如 op_name F32）
+  std::regex name_pattern("\\S+");    //匹配单独的操作名称
+  std::regex info_pattern("#.*");     //匹配注释行（以 # 开头）。
+  std::regex empty_pattern("^\\s*$"); //匹配空行。
   std::ifstream infile(qtable);
   if (!infile) {
     llvm::errs() << "Can't open file: " << qtable << " !\n";
@@ -2216,7 +2220,9 @@ void ConvertTopToTpu::init_qtable() {
     llvm::errs() << "Error, quantize file in [" << line << "]\n";
     assert(false);
   }
-  for (const auto &entry : LoweringConfig::split_map) {
+  for (
+      const auto &entry : LoweringConfig::
+          split_map) { //例如，如果某个操作被分裂为多个子操作，则所有子操作共享相同的量化模式。
     const std::string &key = entry.first;
     const std::set<std::string> &splitValues = entry.second;
 
